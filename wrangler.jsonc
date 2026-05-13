@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "telegram-vip-payment-bot",
+  "name": "telegram-payment",
   "main": "src/index.js",
   "compatibility_date": "2026-05-13",
   "triggers": {

@@ -121,7 +121,7 @@ npm run deploy
 Setelah deploy, buka endpoint ini untuk menyalakan container:
 
 ```powershell
-curl.exe -H "x-boot-token: TOKEN_KAMU" https://telegram-vip-payment-bot.NAMA_AKUN.workers.dev/start
+curl.exe -H "x-boot-token: TOKEN_KAMU" https://telegram-payment.NAMA_AKUN.workers.dev/start
 ```
 
 Cek status container:

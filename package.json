@@ -1,5 +1,5 @@
 {
-  "name": "telegram-vip-payment-bot",
+  "name": "telegram-payment",
   "private": true,
   "type": "module",
   "scripts": {
