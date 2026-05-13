@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import random
 import re
-import string
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -121,7 +120,7 @@ class SaweriaPayments:
             "agree": True,
             "notUnderage": True,
             "message": message[:250],
-            "amount": int(amount),
+            "amount": str(int(amount)),
             "payment_type": "qris",
             "vote": "",
             "currency": "IDR",
@@ -133,7 +132,7 @@ class SaweriaPayments:
         }
         response = self._request(
             "POST",
-            f"https://backend.saweria.co/donations/{target_user_id}",
+            f"https://backend.saweria.co/donations/snap/{target_user_id}",
             json=payload,
             headers=self._saweria_headers(),
             timeout=30,
@@ -153,17 +152,21 @@ class SaweriaPayments:
                 ),
                 status_code=response.status_code,
             )
-        data = response.json().get("data", {})
-        qr_string = data.get("qr_string")
-        transaction_id = data.get("id")
+        raw = response.json()
+        qr_string = self._find_first(raw, {"qr_string", "qrString"})
+        transaction_id = self._find_first(raw, {"id", "transaction_id", "transactionId"})
         if not qr_string or not transaction_id:
-            raise RuntimeError("Response Saweria tidak mengandung qr_string atau id transaksi.")
+            reason = self._response_debug(response)
+            raise RuntimeError(
+                "Response Saweria tidak mengandung qr_string atau id transaksi. "
+                f"{reason}"
+            )
         qr_path = generate_qr_image(qr_string, str(target), template_path=None)
         return PaymentRequest(
-            transaction_id=transaction_id,
+            transaction_id=str(transaction_id),
             payment_url=None,
             qr_path=qr_path,
-            raw={"qr_string": qr_string, "transaction_id": transaction_id},
+            raw=raw,
         )
 
     def _check_paid_status(self, transaction_id: str) -> bool:
@@ -234,12 +237,19 @@ class SaweriaPayments:
             "User-Agent": (
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                 "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/120.0.0.0 Safari/537.36"
+                "Chrome/148.0.0.0 Safari/537.36"
             ),
-            "Accept": "application/json, text/plain, */*",
+            "Accept": "*/*",
             "Content-Type": "application/json",
+            "DNT": "1",
             "Origin": "https://saweria.co",
-            "Referer": f"https://saweria.co/{self.username}",
+            "Referer": "https://saweria.co/",
+            "Sec-Fetch-Dest": "empty",
+            "Sec-Fetch-Mode": "cors",
+            "Sec-Fetch-Site": "same-site",
+            "sec-ch-ua": '"Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"',
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": '"Windows"',
         }
 
     def _proxies(self) -> dict[str, str] | None:
@@ -301,6 +311,22 @@ class SaweriaPayments:
         text = re.sub(r"<[^>]+>", " ", text)
         text = re.sub(r"\s+", " ", text).strip()
         return text[:1000]
+
+    def _find_first(self, value: Any, keys: set[str]) -> Any:
+        if isinstance(value, dict):
+            for key in keys:
+                if value.get(key):
+                    return value[key]
+            for item in value.values():
+                found = self._find_first(item, keys)
+                if found:
+                    return found
+        if isinstance(value, list):
+            for item in value:
+                found = self._find_first(item, keys)
+                if found:
+                    return found
+        return None
 
     def _random_sender(self) -> str:
         names = [
