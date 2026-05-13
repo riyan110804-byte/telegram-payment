@@ -194,6 +194,57 @@ class VipPaymentBot:
             lines.append(f"- {status}: {total}")
         await message.reply_text("\n".join(lines))
 
+    async def check_order(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        user = update.effective_user
+        message = update.effective_message
+        if user is None or message is None:
+            return
+        if user.id not in self.settings.admin_ids:
+            await message.reply_text("Akses ditolak.")
+            return
+        if not context.args:
+            await message.reply_text("Pakai: /check ORDER_ID")
+            return
+        try:
+            order_id = int(context.args[0].lstrip("#"))
+        except ValueError:
+            await message.reply_text("ORDER_ID harus angka.")
+            return
+        order = self.store.get_order(order_id)
+        if order is None:
+            await message.reply_text(f"Order #{order_id} tidak ditemukan di database bot ini.")
+            return
+        if order.status != "pending":
+            await message.reply_text(f"Order #{order.id} status sekarang: {order.status}")
+            return
+        if not order.transaction_id:
+            await message.reply_text(f"Order #{order.id} belum punya transaction_id.")
+            return
+
+        try:
+            status = await self.payments.get_status(order.transaction_id)
+        except Exception as exc:
+            logger.warning("Manual payment check failed for order %s: %s", order.id, exc)
+            self.store.add_event(order.id, "manual_payment_check_error", str(exc))
+            await message.reply_text(f"Gagal cek order #{order.id}: {exc}")
+            return
+        self.store.add_event(
+            order.id,
+            "manual_payment_check",
+            f"paid={status.paid} status={status.status}",
+        )
+        if not status.paid:
+            await message.reply_text(
+                f"Order #{order.id} belum paid menurut gateway. Status: {status.status or '-'}"
+            )
+            return
+
+        await self._process_paid_order(
+            context.application,
+            order,
+            force_reply_chat_id=message.chat_id,
+        )
+
     async def payment_poller(self, application: Application) -> None:
         while True:
             try:
@@ -216,34 +267,55 @@ class VipPaymentBot:
             if not order.transaction_id:
                 continue
             try:
-                paid = await self.payments.is_paid(order.transaction_id)
+                status = await self.payments.get_status(order.transaction_id)
             except Exception as exc:
                 logger.warning("Payment check failed for order %s: %s", order.id, exc)
                 self.store.add_event(order.id, "payment_check_error", str(exc))
                 continue
-            if not paid:
+            self.store.add_event(
+                order.id,
+                "payment_check",
+                f"paid={status.paid} status={status.status}",
+            )
+            if not status.paid:
                 continue
 
-            try:
-                invite_link = await self.telegram_user.create_vip_invite_link(order.id)
-            except Exception as exc:
-                logger.exception("Failed to create invite link for order %s", order.id)
-                self.store.add_event(order.id, "invite_error", str(exc))
-                await self._notify_admins(
-                    application,
-                    f"Pembayaran order #{order.id} sudah paid, tapi gagal membuat link VIP: {exc}",
+            await self._process_paid_order(application, order)
+
+    async def _process_paid_order(
+        self,
+        application: Application,
+        order: Order,
+        force_reply_chat_id: int | None = None,
+    ) -> None:
+        try:
+            invite_link = await self.telegram_user.create_vip_invite_link(order.id)
+        except Exception as exc:
+            logger.exception("Failed to create invite link for order %s", order.id)
+            self.store.add_event(order.id, "invite_error", str(exc))
+            await self._notify_admins(
+                application,
+                f"Pembayaran order #{order.id} sudah paid, tapi gagal membuat link VIP: {exc}",
+            )
+            if force_reply_chat_id is not None:
+                await application.bot.send_message(
+                    chat_id=force_reply_chat_id,
+                    text=f"Order #{order.id} paid, tapi gagal membuat link VIP: {exc}",
                 )
-                continue
+            return
 
-            self.store.mark_paid(order.id, invite_link)
+        self.store.mark_paid(order.id, invite_link)
+        text = (
+            "Pembayaran terkonfirmasi.\n\n"
+            f"Link group VIP:\n{invite_link}\n\n"
+            f"Expired: {self.settings.vip_invite_expire_hours} jam\n"
+            f"Batas pakai: {self.settings.vip_invite_usage_limit}x"
+        )
+        await application.bot.send_message(chat_id=order.user_id, text=text)
+        if force_reply_chat_id is not None:
             await application.bot.send_message(
-                chat_id=order.user_id,
-                text=(
-                    "Pembayaran terkonfirmasi.\n\n"
-                    f"Link group VIP:\n{invite_link}\n\n"
-                    f"Expired: {self.settings.vip_invite_expire_hours} jam\n"
-                    f"Batas pakai: {self.settings.vip_invite_usage_limit}x"
-                ),
+                chat_id=force_reply_chat_id,
+                text=f"Order #{order.id} sudah diproses dan link VIP dikirim.",
             )
 
     async def _notify_admins(self, application: Application, text: str) -> None:
@@ -280,5 +352,6 @@ def main() -> None:
     application.add_handler(CommandHandler("buy", bot.buy))
     application.add_handler(CommandHandler("status", bot.status))
     application.add_handler(CommandHandler("admin", bot.admin))
+    application.add_handler(CommandHandler("check", bot.check_order))
     application.add_handler(CallbackQueryHandler(bot.buy, pattern="^buy$"))
     application.run_polling(drop_pending_updates=True)

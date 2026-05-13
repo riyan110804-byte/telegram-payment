@@ -18,6 +18,13 @@ class PaymentRequest:
     raw: Any
 
 
+@dataclass(frozen=True)
+class PaymentStatus:
+    paid: bool
+    status: str | None
+    raw: Any
+
+
 class PaymentGatewayError(RuntimeError):
     def __init__(
         self,
@@ -51,7 +58,11 @@ class SaweriaPayments:
         return await asyncio.to_thread(self._create_payment_sync, amount, message)
 
     async def is_paid(self, transaction_id: str) -> bool:
-        return await asyncio.to_thread(self._is_paid_sync, transaction_id)
+        status = await self.get_status(transaction_id)
+        return status.paid
+
+    async def get_status(self, transaction_id: str) -> PaymentStatus:
+        return await asyncio.to_thread(self._get_status_sync, transaction_id)
 
     def _create_payment_sync(self, amount: int, message: str) -> PaymentRequest:
         self._check_account()
@@ -100,7 +111,7 @@ class SaweriaPayments:
             raw=raw,
         )
 
-    def _is_paid_sync(self, transaction_id: str) -> bool:
+    def _get_status_sync(self, transaction_id: str) -> PaymentStatus:
         response = self._request(
             "GET",
             "/payment/saweria/check/transaction",
@@ -116,8 +127,10 @@ class SaweriaPayments:
                 "Status pembayaran belum bisa dicek dari gateway.",
             )
 
-        status = self._find_first(raw, {"status"})
-        return str(status or "").upper() == "PAID"
+        status = self._find_first(raw, {"status", "state"})
+        paid_flag = self._find_first(raw, {"paid", "is_paid", "isPaid"})
+        paid = self._is_paid_value(status) or paid_flag is True
+        return PaymentStatus(paid=paid, status=str(status) if status else None, raw=raw)
 
     def _check_account(self) -> None:
         response = self._request(
@@ -231,6 +244,10 @@ class SaweriaPayments:
                 if found:
                     return found
         return None
+
+    def _is_paid_value(self, value: Any) -> bool:
+        normalized = str(value or "").strip().upper()
+        return normalized in {"PAID", "SUCCESS", "SUCCEEDED", "COMPLETED", "SETTLED"}
 
     def _generate_qr_image(self, value: str, transaction_id: Any) -> str:
         import qrcode
