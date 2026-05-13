@@ -36,15 +36,15 @@ class SaweriaPayments:
         self,
         username: str,
         email: str,
-        user_id: str | None = None,
-        proxy_url: str | None = None,
-        use_cloudscraper: bool = False,
+        user_id: str,
+        maelyn_api_key: str,
+        maelyn_base_url: str,
     ) -> None:
         self.username = username
         self.email = email
         self.user_id = user_id
-        self.proxy_url = proxy_url
-        self.use_cloudscraper = use_cloudscraper
+        self.maelyn_api_key = maelyn_api_key
+        self.maelyn_base_url = maelyn_base_url.rstrip("/")
         self._session: Any | None = None
 
     async def create_payment(self, amount: int, message: str) -> PaymentRequest:
@@ -54,219 +54,98 @@ class SaweriaPayments:
         return await asyncio.to_thread(self._is_paid_sync, transaction_id)
 
     def _create_payment_sync(self, amount: int, message: str) -> PaymentRequest:
-        if self.user_id:
-            return self._create_payment_with_user_id(amount, message)
-        if self.use_cloudscraper:
-            user_id = self._validate_saweria_profile()
-            return self._create_payment_with_user_id(amount, message, user_id)
-
-        from qris_saweria import create_payment_qr
-
-        self._validate_saweria_profile()
-        safe_message = "".join(
-            character if character.isalnum() else "-"
-            for character in message.lower()
-        ).strip("-")
-        target = Path(tempfile.gettempdir()) / f"qris-{safe_message or 'payment'}.png"
-        try:
-            qr_string, transaction_id, qr_path = create_payment_qr(
-                self.username,
-                amount,
-                self.email,
-                output_path=str(target),
-                use_template=False,
-            )
-        except Exception as exc:
-            if "Saweria account not found" in str(exc):
-                raise RuntimeError(
-                    f"Akun Saweria '{self.username}' tidak ditemukan dari server. "
-                    "Pastikan SAWERIA_USERNAME isi username saja. Jika username sudah benar, "
-                    "kemungkinan Saweria memberi response berbeda ke IP hosting."
-                ) from exc
-            raise
-        return PaymentRequest(
-            transaction_id=transaction_id,
-            payment_url=None,
-            qr_path=qr_path,
-            raw={"qr_string": qr_string, "transaction_id": transaction_id},
-        )
-
-    def _is_paid_sync(self, transaction_id: str) -> bool:
-        if self.user_id:
-            return self._check_paid_status(transaction_id)
-
-        from qris_saweria import check_paid_status
-
-        return bool(check_paid_status(transaction_id))
-
-    def _create_payment_with_user_id(
-        self,
-        amount: int,
-        message: str,
-        user_id: str | None = None,
-    ) -> PaymentRequest:
-        from qris_saweria import generate_qr_image
-
-        target_user_id = user_id or self.user_id
-        if not target_user_id:
-            raise RuntimeError("SAWERIA_USER_ID tidak tersedia untuk membuat pembayaran.")
-
-        safe_message = "".join(
-            character if character.isalnum() else "-"
-            for character in message.lower()
-        ).strip("-")
-        target = Path(tempfile.gettempdir()) / f"qris-{safe_message or 'payment'}.png"
+        self._check_account()
         sender = self._random_sender()
         payload = {
-            "agree": True,
-            "notUnderage": True,
-            "message": message[:250],
-            "amount": str(int(amount)),
-            "payment_type": "qris",
-            "vote": "",
-            "currency": "IDR",
-            "customer_info": {
-                "first_name": sender,
-                "email": self._email_with_tag(sender),
-                "phone": "",
-            },
+            "user_id": self.user_id,
+            "amount": int(amount),
+            "name": sender,
+            "email": self._email_with_tag(sender),
+            "msg": message[:250],
         }
         response = self._request(
             "POST",
-            f"https://backend.saweria.co/donations/snap/{target_user_id}",
+            "/payment/saweria/create/transaction",
             json=payload,
-            headers=self._saweria_headers(),
             timeout=30,
         )
-        if not response.ok:
-            reason = self._response_debug(response)
-            raise PaymentGatewayError(
-                user_message=(
-                    "QRIS gagal dibuat karena gateway pembayaran sedang menolak "
-                    "request server. Order dibatalkan, jangan transfer dulu."
-                ),
-                admin_message=(
-                    f"Saweria create payment gagal: HTTP {response.status_code}. "
-                    f"{reason} "
-                    "Kemungkinan IP hosting diblok Saweria. Set SAWERIA_PROXY_URL "
-                    "atau gunakan hosting/IP lain."
-                ),
-                status_code=response.status_code,
+        raw = self._read_json(response)
+        if not response.ok or not raw.get("success"):
+            self._raise_gateway_error(
+                response,
+                raw,
+                "Saweria create payment via Maelyn gagal",
+                "QRIS gagal dibuat karena gateway pembayaran sedang gagal. Order dibatalkan, jangan transfer dulu.",
             )
-        raw = response.json()
-        qr_string = self._find_first(raw, {"qr_string", "qrString"})
-        transaction_id = self._find_first(raw, {"id", "transaction_id", "transactionId"})
-        if not qr_string or not transaction_id:
-            reason = self._response_debug(response)
+
+        transaction_id = self._find_first(raw, {"id", "payment_id", "paymentId", "transaction_id"})
+        payment_url = self._find_first(raw, {"payment_url", "paymentUrl", "url"})
+        qr_string = self._find_first(raw, {"qr_string", "qrString", "qris", "qr"})
+        if not transaction_id:
             raise RuntimeError(
-                "Response Saweria tidak mengandung qr_string atau id transaksi. "
-                f"{reason}"
+                "Response Maelyn tidak mengandung id transaksi. "
+                f"{self._response_debug(response, raw)}"
             )
-        qr_path = generate_qr_image(qr_string, str(target), template_path=None)
+        if not qr_string and not payment_url:
+            raise RuntimeError(
+                "Response Maelyn tidak mengandung qr_string atau payment_url. "
+                f"{self._response_debug(response, raw)}"
+            )
+
+        qr_path = self._generate_qr_image(str(qr_string or payment_url), transaction_id)
         return PaymentRequest(
             transaction_id=str(transaction_id),
-            payment_url=None,
+            payment_url=str(payment_url) if payment_url else None,
             qr_path=qr_path,
             raw=raw,
         )
 
-    def _check_paid_status(self, transaction_id: str) -> bool:
+    def _is_paid_sync(self, transaction_id: str) -> bool:
         response = self._request(
             "GET",
-            f"https://backend.saweria.co/donations/qris/{transaction_id}",
-            headers=self._saweria_headers(),
+            "/payment/saweria/check/transaction",
+            params={"user_id": self.user_id, "payment_id": transaction_id},
             timeout=30,
         )
-        if not response.ok:
-            reason = self._response_debug(response)
-            raise PaymentGatewayError(
-                user_message="Status pembayaran belum bisa dicek dari Saweria.",
-                admin_message=(
-                    f"Saweria check payment gagal: HTTP {response.status_code}. {reason}"
-                ),
-                status_code=response.status_code,
+        raw = self._read_json(response)
+        if not response.ok or not raw.get("success"):
+            self._raise_gateway_error(
+                response,
+                raw,
+                "Saweria check payment via Maelyn gagal",
+                "Status pembayaran belum bisa dicek dari gateway.",
             )
-        data = response.json().get("data", {})
-        return data.get("qr_string") == ""
 
-    def _validate_saweria_profile(self) -> str:
-        import json
-        import re
-        url = f"https://saweria.co/{self.username}"
+        status = self._find_first(raw, {"status"})
+        return str(status or "").upper() == "PAID"
+
+    def _check_account(self) -> None:
         response = self._request(
             "GET",
-            url,
-            headers=self._saweria_headers(),
+            "/payment/saweria/check/account",
+            params={"username": self.username},
             timeout=30,
         )
-        if not response.ok:
-            reason = self._response_debug(response)
-            raise PaymentGatewayError(
-                user_message=(
-                    "QRIS gagal dibuat karena gateway pembayaran sedang menolak "
-                    "request server. Order dibatalkan, jangan transfer dulu."
-                ),
-                admin_message=(
-                    f"Saweria profile '{self.username}' gagal dibuka: "
-                    f"HTTP {response.status_code}. {reason}"
-                ),
-                status_code=response.status_code,
+        raw = self._read_json(response)
+        if not response.ok or not raw.get("success"):
+            self._raise_gateway_error(
+                response,
+                raw,
+                "Saweria check account via Maelyn gagal",
+                "Akun Saweria belum bisa diverifikasi dari gateway.",
             )
 
-        match = re.search(
-            r'<script id="__NEXT_DATA__" type="application/json">(.*?)</script>',
-            response.text,
-            re.DOTALL,
-        )
-        if not match:
-            raise RuntimeError(
-                f"Saweria profile '{self.username}' tidak mengandung __NEXT_DATA__. "
-                "Kemungkinan response Saweria dari IP hosting berbeda atau diblok."
-            )
-
-        data = json.loads(match.group(1))
-        profile = data.get("props", {}).get("pageProps", {}).get("data", {})
-        user_id = profile.get("id")
-        if not user_id:
-            raise RuntimeError(
-                f"Saweria profile '{self.username}' terbuka, tapi user id tidak ditemukan."
-            )
-        return str(user_id)
-
-    def _saweria_headers(self) -> dict[str, str]:
-        return {
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/148.0.0.0 Safari/537.36"
-            ),
-            "Accept": "*/*",
-            "Content-Type": "application/json",
-            "DNT": "1",
-            "Origin": "https://saweria.co",
-            "Referer": "https://saweria.co/",
-            "Sec-Fetch-Dest": "empty",
-            "Sec-Fetch-Mode": "cors",
-            "Sec-Fetch-Site": "same-site",
-            "sec-ch-ua": '"Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"',
-            "sec-ch-ua-mobile": "?0",
-            "sec-ch-ua-platform": '"Windows"',
-        }
-
-    def _proxies(self) -> dict[str, str] | None:
-        if not self.proxy_url:
-            return None
-        return {"http": self.proxy_url, "https": self.proxy_url}
-
-    def _request(self, method: str, url: str, **kwargs: Any) -> Any:
-        kwargs.setdefault("proxies", self._proxies())
+    def _request(self, method: str, path: str, **kwargs: Any) -> Any:
         session = self._requests_session()
+        url = f"{self.maelyn_base_url}{path}"
+        headers = kwargs.pop("headers", {})
+        headers.update(self._maelyn_headers())
         attempts = 4
         last_response: Any | None = None
         for attempt in range(1, attempts + 1):
-            response = session.request(method, url, **kwargs)
+            response = session.request(method, url, headers=headers, **kwargs)
             last_response = response
-            if response.ok or not self._is_retryable_response(response) or attempt == attempts:
+            if response.ok or response.status_code not in self._retryable_statuses() or attempt == attempts:
                 return response
             delay = min(6.0, (0.8 * attempt) + random.uniform(0.2, 0.8))
             time.sleep(delay)
@@ -275,51 +154,59 @@ class SaweriaPayments:
     def _requests_session(self) -> Any:
         if self._session is not None:
             return self._session
-        if self.use_cloudscraper:
-            try:
-                import cloudscraper
-            except ImportError as exc:
-                raise RuntimeError(
-                    "SAWERIA_USE_CLOUDSCRAPER=true tapi package cloudscraper belum terinstall."
-                ) from exc
-            self._session = cloudscraper.create_scraper(
-                browser={
-                    "browser": "chrome",
-                    "platform": "windows",
-                    "desktop": True,
-                }
-            )
-            return self._session
-
         import requests
 
         self._session = requests.Session()
         return self._session
 
-    def _is_retryable_response(self, response: Any) -> bool:
-        if response.status_code in {408, 409, 425, 429, 500, 502, 503, 504, 520, 522, 524}:
-            return True
-        if response.status_code == 403:
-            return "Just a moment" in response.text or response.headers.get("server") == "cloudflare"
-        return False
+    def _maelyn_headers(self) -> dict[str, str]:
+        return {
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "User-Agent": "telegram-vip-payment-bot/1.0",
+            "x-maelyn-auth": self.maelyn_api_key,
+        }
 
-    def _response_debug(self, response: Any) -> str:
-        content_type = response.headers.get("content-type", "-")
-        cf_ray = response.headers.get("cf-ray")
-        server = response.headers.get("server")
-        reason = ""
+    def _retryable_statuses(self) -> set[int]:
+        return {408, 409, 425, 429, 500, 502, 503, 504, 520, 522, 524}
+
+    def _read_json(self, response: Any) -> dict[str, Any]:
         try:
             data = response.json()
-            reason = self._compact_text(str(data))
         except Exception:
-            reason = self._compact_text(response.text)
+            return {}
+        if isinstance(data, dict):
+            return data
+        return {"data": data}
+
+    def _raise_gateway_error(
+        self,
+        response: Any,
+        raw: dict[str, Any],
+        admin_prefix: str,
+        user_message: str,
+    ) -> None:
+        message = raw.get("message")
+        detail = f" message={self._compact_text(str(message))}" if message else ""
+        raise PaymentGatewayError(
+            user_message=user_message,
+            admin_message=(
+                f"{admin_prefix}: HTTP {response.status_code}.{detail} "
+                f"{self._response_debug(response, raw)}"
+            ),
+            status_code=response.status_code,
+        )
+
+    def _response_debug(self, response: Any, raw: dict[str, Any] | None = None) -> str:
+        content_type = response.headers.get("content-type", "-")
+        server = response.headers.get("server")
         pieces = [f"content-type={content_type}"]
-        if cf_ray:
-            pieces.append(f"cf-ray={cf_ray}")
         if server:
             pieces.append(f"server={server}")
-        if reason:
-            pieces.append(f"body={reason[:700]}")
+        if raw:
+            pieces.append(f"body={self._compact_text(str(raw))[:700]}")
+        else:
+            pieces.append(f"body={self._compact_text(response.text)[:700]}")
         return " ".join(pieces)
 
     def _compact_text(self, text: str) -> str:
@@ -344,6 +231,18 @@ class SaweriaPayments:
                 if found:
                     return found
         return None
+
+    def _generate_qr_image(self, value: str, transaction_id: Any) -> str:
+        import qrcode
+
+        safe_id = "".join(
+            character if character.isalnum() else "-"
+            for character in str(transaction_id).lower()
+        ).strip("-")
+        target = Path(tempfile.gettempdir()) / f"qris-{safe_id or 'payment'}.png"
+        image = qrcode.make(value)
+        image.save(str(target))
+        return str(target)
 
     def _random_sender(self) -> str:
         names = [

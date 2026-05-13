@@ -40,13 +40,6 @@ def _bounded_int(
     return value
 
 
-def _bool(name: str, default: bool = False) -> bool:
-    value = os.getenv(name)
-    if value is None or value.strip() == "":
-        return default
-    return value.strip().lower() in {"1", "true", "yes", "y", "on"}
-
-
 def _admin_ids() -> set[int]:
     raw = _required("ADMIN_IDS")
     ids: set[int] = set()
@@ -86,9 +79,9 @@ class Settings:
     telethon_session_string: str
     vip_group_id: int | str
     saweria_username: str
-    saweria_user_id: str | None
-    saweria_proxy_url: str | None
-    saweria_use_cloudscraper: bool
+    saweria_user_id: str
+    maelyn_api_key: str
+    maelyn_base_url: str
     payment_amount: int
     payment_email: str
     payment_expire_minutes: int
@@ -115,9 +108,12 @@ def load_settings() -> Settings:
         telethon_session_string=_required("TELETHON_SESSION_STRING"),
         vip_group_id=vip_group_id,
         saweria_username=_saweria_username(),
-        saweria_user_id=os.getenv("SAWERIA_USER_ID", "").strip() or None,
-        saweria_proxy_url=os.getenv("SAWERIA_PROXY_URL", "").strip() or None,
-        saweria_use_cloudscraper=_bool("SAWERIA_USE_CLOUDSCRAPER"),
+        saweria_user_id=_required("SAWERIA_USER_ID"),
+        maelyn_api_key=_required("MAELYN_API_KEY"),
+        maelyn_base_url=(
+            os.getenv("MAELYN_BASE_URL", "https://api.maelyn.eu/api").strip().rstrip("/")
+            or "https://api.maelyn.eu/api"
+        ),
         payment_amount=_bounded_int("PAYMENT_AMOUNT", minimum=1000),
         payment_email=os.getenv("PAYMENT_EMAIL", "member@example.com").strip(),
         payment_expire_minutes=_bounded_int(

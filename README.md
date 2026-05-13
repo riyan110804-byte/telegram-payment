@@ -10,7 +10,7 @@ Target deploy sekarang adalah Railway sebagai Python worker. Ini lebih cocok unt
 
 - Konfigurasi lewat Railway variables.
 - Admin whitelist lewat `ADMIN_IDS`.
-- Payment QRIS Saweria lewat package `qris-saweria`, dikirim sebagai QR polos tanpa template.
+- Payment QRIS Saweria lewat Maelyn API, dikirim sebagai QR polos.
 - Telethon user session untuk membuat invite link group VIP.
 - SQLite untuk menyimpan order.
 - Background poller untuk cek pembayaran.
@@ -50,14 +50,14 @@ Wajib:
 - `TELETHON_SESSION_STRING`: hasil script `scripts/create_telethon_session.py`.
 - `VIP_GROUP_ID`: id group VIP lengkap, contoh `-1001234567890`. Jika group punya username, bisa pakai username atau link `https://t.me/...`.
 - `SAWERIA_USERNAME`: username Saweria penerima pembayaran, isi username saja tanpa `@` dan tanpa URL.
+- `SAWERIA_USER_ID`: user id internal Saweria untuk Maelyn create/check transaction.
+- `MAELYN_API_KEY`: API key Maelyn, dikirim lewat header `x-maelyn-auth`.
 - `PAYMENT_AMOUNT`: nominal VIP, contoh `50000`, minimal `1000`.
 
 Direkomendasikan:
 
 - `PAYMENT_EMAIL`: email donor untuk Saweria.
-- `SAWERIA_USER_ID`: optional. Isi user id internal Saweria untuk bypass scrape halaman `saweria.co` jika hosting mendapat HTTP 403 dari Saweria.
-- `SAWERIA_PROXY_URL`: optional. Proxy HTTP/HTTPS untuk request Saweria jika IP hosting mendapat HTTP 403.
-- `SAWERIA_USE_CLOUDSCRAPER`: optional. Set `true` untuk mencoba `cloudscraper` saat request Saweria kena Cloudflare challenge.
+- `MAELYN_BASE_URL`: default `https://api.maelyn.eu/api`.
 - `PAYMENT_EXPIRE_MINUTES`: default `30`.
 - `PAYMENT_CHECK_INTERVAL_SECONDS`: default `20`, minimal `5`.
 - `VIP_INVITE_EXPIRE_HOURS`: default `6`, maksimal `24`. Nilai ini ditampilkan di pesan link VIP.
@@ -95,9 +95,8 @@ File deploy yang dipakai:
 
 Bot hanya membuat order dari private chat supaya QRIS dan invite link tidak tercampur di group publik. Link VIP yang dikirim dibuat lewat Telethon dengan `expire_date` dan `usage_limit=1`.
 
-Jika Saweria mengembalikan HTTP 403 saat membuat QRIS, order akan ditandai gagal dan link VIP tidak akan pernah dikirim. Ini sengaja supaya tidak ada bypass pembayaran ketika gateway sedang menolak request server.
-Admin alert akan menyertakan ringkasan aman dari response Saweria, seperti content-type, server, cf-ray, dan potongan body error jika tersedia.
-Jika body berisi `Just a moment... Enable JavaScript and cookies to continue`, set `SAWERIA_USE_CLOUDSCRAPER=true` bisa dicoba. Kalau tetap 403, IP hosting/proxy masih ditolak Cloudflare dan perlu `SAWERIA_PROXY_URL` atau hosting/IP lain.
+Jika Maelyn/Saweria gagal membuat atau mengecek transaksi, order akan ditandai gagal atau tetap pending dan link VIP tidak akan pernah dikirim. Ini sengaja supaya tidak ada bypass pembayaran ketika gateway sedang menolak request server.
+Admin alert akan menyertakan ringkasan aman dari response gateway, seperti content-type, server, message, dan potongan body error jika tersedia.
 
 Akun Telethon harus menjadi admin di group VIP dan punya izin membuat invite link. `VIP_GROUP_ID` bisa didapat dari bot info/chat id helper atau dari log update bot.
 

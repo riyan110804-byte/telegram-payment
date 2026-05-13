@@ -1,5 +1,4 @@
 python-telegram-bot[job-queue]==22.5
 telethon>=1.41,<2
-qris-saweria==1.0.1
 python-dotenv>=1.0.1
-cloudscraper>=1.2.71,<2
+qrcode[pil]>=8.2
