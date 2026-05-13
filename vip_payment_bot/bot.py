@@ -224,7 +224,8 @@ class VipPaymentBot:
                 text=(
                     "Pembayaran terkonfirmasi.\n\n"
                     f"Link group VIP:\n{invite_link}\n\n"
-                    "Link ini terbatas sesuai konfigurasi bot."
+                    f"Expired: {self.settings.vip_invite_expire_hours} jam\n"
+                    f"Batas pakai: {self.settings.vip_invite_usage_limit}x"
                 ),
             )
 

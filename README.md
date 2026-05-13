@@ -57,7 +57,7 @@ Direkomendasikan:
 - `PAYMENT_EMAIL`: email donor untuk Saweria.
 - `PAYMENT_EXPIRE_MINUTES`: default `30`.
 - `PAYMENT_CHECK_INTERVAL_SECONDS`: default `20`, minimal `5`.
-- `VIP_INVITE_EXPIRE_HOURS`: default `6`, maksimal `24`.
+- `VIP_INVITE_EXPIRE_HOURS`: default `6`, maksimal `24`. Nilai ini ditampilkan di pesan link VIP.
 - `VIP_INVITE_USAGE_LIMIT`: wajib `1`, link VIP single-use.
 - `DB_PATH`: default `payments.db`. Untuk Railway persistent volume, gunakan path di mounted volume, misalnya `/data/payments.db`.
 - `LOG_LEVEL`: default `INFO`.
