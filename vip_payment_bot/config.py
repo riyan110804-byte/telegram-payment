@@ -80,6 +80,7 @@ class Settings:
     vip_group_id: int | str
     saweria_username: str
     saweria_user_id: str | None
+    saweria_proxy_url: str | None
     payment_amount: int
     payment_email: str
     payment_expire_minutes: int
@@ -107,6 +108,7 @@ def load_settings() -> Settings:
         vip_group_id=vip_group_id,
         saweria_username=_saweria_username(),
         saweria_user_id=os.getenv("SAWERIA_USER_ID", "").strip() or None,
+        saweria_proxy_url=os.getenv("SAWERIA_PROXY_URL", "").strip() or None,
         payment_amount=_bounded_int("PAYMENT_AMOUNT", minimum=1000),
         payment_email=os.getenv("PAYMENT_EMAIL", "member@example.com").strip(),
         payment_expire_minutes=_bounded_int(

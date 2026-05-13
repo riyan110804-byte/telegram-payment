@@ -18,10 +18,17 @@ class PaymentRequest:
 
 
 class SaweriaPayments:
-    def __init__(self, username: str, email: str, user_id: str | None = None) -> None:
+    def __init__(
+        self,
+        username: str,
+        email: str,
+        user_id: str | None = None,
+        proxy_url: str | None = None,
+    ) -> None:
         self.username = username
         self.email = email
         self.user_id = user_id
+        self.proxy_url = proxy_url
 
     async def create_payment(self, amount: int, message: str) -> PaymentRequest:
         return await asyncio.to_thread(self._create_payment_sync, amount, message)
@@ -65,6 +72,9 @@ class SaweriaPayments:
         )
 
     def _is_paid_sync(self, transaction_id: str) -> bool:
+        if self.user_id:
+            return self._check_paid_status(transaction_id)
+
         from qris_saweria import check_paid_status
 
         return bool(check_paid_status(transaction_id))
@@ -97,11 +107,14 @@ class SaweriaPayments:
             f"https://backend.saweria.co/donations/{self.user_id}",
             json=payload,
             headers=self._saweria_headers(),
+            proxies=self._proxies(),
             timeout=30,
         )
         if not response.ok:
             raise RuntimeError(
-                f"Gagal membuat pembayaran Saweria: HTTP {response.status_code}."
+                f"Gagal membuat pembayaran Saweria: HTTP {response.status_code}. "
+                "Jika berjalan di Railway, kemungkinan IP hosting diblok Saweria. "
+                "Set SAWERIA_PROXY_URL atau gunakan hosting lain."
             )
         data = response.json().get("data", {})
         qr_string = data.get("qr_string")
@@ -116,6 +129,22 @@ class SaweriaPayments:
             raw={"qr_string": qr_string, "transaction_id": transaction_id},
         )
 
+    def _check_paid_status(self, transaction_id: str) -> bool:
+        import requests
+
+        response = requests.get(
+            f"https://backend.saweria.co/donations/qris/{transaction_id}",
+            headers=self._saweria_headers(),
+            proxies=self._proxies(),
+            timeout=30,
+        )
+        if not response.ok:
+            raise RuntimeError(
+                f"Gagal cek status Saweria: HTTP {response.status_code}."
+            )
+        data = response.json().get("data", {})
+        return data.get("qr_string") == ""
+
     def _validate_saweria_profile(self) -> None:
         import json
         import re
@@ -125,6 +154,7 @@ class SaweriaPayments:
         response = requests.get(
             url,
             headers=self._saweria_headers(),
+            proxies=self._proxies(),
             timeout=30,
         )
         if not response.ok:
@@ -158,7 +188,15 @@ class SaweriaPayments:
                 "Chrome/120.0.0.0 Safari/537.36"
             ),
             "Accept": "application/json, text/plain, */*",
+            "Content-Type": "application/json",
+            "Origin": "https://saweria.co",
+            "Referer": f"https://saweria.co/{self.username}",
         }
+
+    def _proxies(self) -> dict[str, str] | None:
+        if not self.proxy_url:
+            return None
+        return {"http": self.proxy_url, "https": self.proxy_url}
 
     def _random_sender(self) -> str:
         names = [

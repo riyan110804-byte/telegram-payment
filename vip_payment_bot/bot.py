@@ -31,6 +31,7 @@ class VipPaymentBot:
             settings.saweria_username,
             settings.payment_email,
             settings.saweria_user_id,
+            settings.saweria_proxy_url,
         )
         self.telegram_user = TelegramUserClient(settings)
         self.poller_task: asyncio.Task[None] | None = None
