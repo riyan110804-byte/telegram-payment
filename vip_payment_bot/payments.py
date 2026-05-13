@@ -274,8 +274,10 @@ class SaweriaPayments:
         return raw
 
     def _is_paid_value(self, value: Any) -> bool:
+        if value is True:
+            return True
         normalized = str(value or "").strip().upper()
-        return normalized in {"PAID", "SUCCESS", "SUCCEEDED", "COMPLETED", "SETTLED"}
+        return normalized in {"TRUE", "PAID", "SUCCESS", "SUCCEEDED", "COMPLETED", "SETTLED"}
 
     def _generate_qr_image(self, value: str, transaction_id: Any) -> str:
         import qrcode
