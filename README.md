@@ -10,7 +10,7 @@ Target deploy sekarang adalah Railway sebagai Python worker. Ini lebih cocok unt
 
 - Konfigurasi lewat Railway variables.
 - Admin whitelist lewat `ADMIN_IDS`.
-- Payment QRIS Saweria lewat package `qris-saweria`.
+- Payment QRIS Saweria lewat package `qris-saweria`, dikirim sebagai QR polos tanpa template.
 - Telethon user session untuk membuat invite link group VIP.
 - SQLite untuk menyimpan order.
 - Background poller untuk cek pembayaran.

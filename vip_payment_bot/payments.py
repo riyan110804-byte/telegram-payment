@@ -40,7 +40,7 @@ class SaweriaPayments:
                 amount,
                 self.email,
                 output_path=str(target),
-                use_template=True,
+                use_template=False,
             )
         except Exception as exc:
             if "Saweria account not found" in str(exc):
