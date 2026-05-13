@@ -89,9 +89,19 @@ class SaweriaPayments:
                 "QRIS gagal dibuat karena gateway pembayaran sedang gagal. Order dibatalkan, jangan transfer dulu.",
             )
 
-        transaction_id = self._find_first(raw, {"id", "payment_id", "paymentId", "transaction_id"})
-        payment_url = self._find_first(raw, {"payment_url", "paymentUrl", "url"})
-        qr_string = self._find_first(raw, {"qr_string", "qrString", "qris", "qr"})
+        payment = self._payment_payload(raw)
+        transaction_id = (
+            self._find_first(payment, {"id", "payment_id", "paymentId", "transaction_id"})
+            or self._find_first(raw, {"payment_id", "paymentId", "transaction_id"})
+        )
+        payment_url = (
+            self._find_first(payment, {"payment_url", "paymentUrl", "url"})
+            or self._find_first(raw, {"payment_url", "paymentUrl"})
+        )
+        qr_string = (
+            self._find_first(payment, {"qr_string", "qrString", "qris", "qr"})
+            or self._find_first(raw, {"qr_string", "qrString", "qris", "qr"})
+        )
         if not transaction_id:
             raise RuntimeError(
                 "Response Maelyn tidak mengandung id transaksi. "
@@ -127,8 +137,15 @@ class SaweriaPayments:
                 "Status pembayaran belum bisa dicek dari gateway.",
             )
 
-        status = self._find_first(raw, {"status", "state"})
-        paid_flag = self._find_first(raw, {"paid", "is_paid", "isPaid"})
+        payment = self._payment_payload(raw)
+        status = (
+            self._find_first(payment, {"status", "state"})
+            or self._find_first(raw, {"status", "state"})
+        )
+        paid_flag = (
+            self._find_first(payment, {"paid", "is_paid", "isPaid"})
+            or self._find_first(raw, {"paid", "is_paid", "isPaid"})
+        )
         paid = self._is_paid_value(status) or paid_flag is True
         return PaymentStatus(paid=paid, status=str(status) if status else None, raw=raw)
 
@@ -244,6 +261,17 @@ class SaweriaPayments:
                 if found:
                     return found
         return None
+
+    def _payment_payload(self, raw: dict[str, Any]) -> dict[str, Any]:
+        payment = raw.get("payment")
+        if isinstance(payment, dict):
+            return payment
+        data = raw.get("data")
+        if isinstance(data, dict) and isinstance(data.get("payment"), dict):
+            return data["payment"]
+        if isinstance(data, dict):
+            return data
+        return raw
 
     def _is_paid_value(self, value: Any) -> bool:
         normalized = str(value or "").strip().upper()
