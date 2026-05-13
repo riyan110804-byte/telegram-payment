@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import random
+import re
 import string
 import tempfile
 from dataclasses import dataclass
@@ -124,6 +125,7 @@ class SaweriaPayments:
             timeout=30,
         )
         if not response.ok:
+            reason = self._response_debug(response)
             raise PaymentGatewayError(
                 user_message=(
                     "QRIS gagal dibuat karena gateway pembayaran sedang menolak "
@@ -131,6 +133,7 @@ class SaweriaPayments:
                 ),
                 admin_message=(
                     f"Saweria create payment gagal: HTTP {response.status_code}. "
+                    f"{reason} "
                     "Kemungkinan IP hosting diblok Saweria. Set SAWERIA_PROXY_URL "
                     "atau gunakan hosting/IP lain."
                 ),
@@ -159,9 +162,12 @@ class SaweriaPayments:
             timeout=30,
         )
         if not response.ok:
+            reason = self._response_debug(response)
             raise PaymentGatewayError(
                 user_message="Status pembayaran belum bisa dicek dari Saweria.",
-                admin_message=f"Saweria check payment gagal: HTTP {response.status_code}.",
+                admin_message=(
+                    f"Saweria check payment gagal: HTTP {response.status_code}. {reason}"
+                ),
                 status_code=response.status_code,
             )
         data = response.json().get("data", {})
@@ -180,6 +186,7 @@ class SaweriaPayments:
             timeout=30,
         )
         if not response.ok:
+            reason = self._response_debug(response)
             raise PaymentGatewayError(
                 user_message=(
                     "QRIS gagal dibuat karena gateway pembayaran sedang menolak "
@@ -187,7 +194,7 @@ class SaweriaPayments:
                 ),
                 admin_message=(
                     f"Saweria profile '{self.username}' gagal dibuka: "
-                    f"HTTP {response.status_code}."
+                    f"HTTP {response.status_code}. {reason}"
                 ),
                 status_code=response.status_code,
             )
@@ -227,6 +234,32 @@ class SaweriaPayments:
         if not self.proxy_url:
             return None
         return {"http": self.proxy_url, "https": self.proxy_url}
+
+    def _response_debug(self, response: Any) -> str:
+        content_type = response.headers.get("content-type", "-")
+        cf_ray = response.headers.get("cf-ray")
+        server = response.headers.get("server")
+        reason = ""
+        try:
+            data = response.json()
+            reason = self._compact_text(str(data))
+        except Exception:
+            reason = self._compact_text(response.text)
+        pieces = [f"content-type={content_type}"]
+        if cf_ray:
+            pieces.append(f"cf-ray={cf_ray}")
+        if server:
+            pieces.append(f"server={server}")
+        if reason:
+            pieces.append(f"body={reason[:700]}")
+        return " ".join(pieces)
+
+    def _compact_text(self, text: str) -> str:
+        text = re.sub(r"<script\b.*?</script>", " ", text, flags=re.IGNORECASE | re.DOTALL)
+        text = re.sub(r"<style\b.*?</style>", " ", text, flags=re.IGNORECASE | re.DOTALL)
+        text = re.sub(r"<[^>]+>", " ", text)
+        text = re.sub(r"\s+", " ", text).strip()
+        return text[:1000]
 
     def _random_sender(self) -> str:
         names = [

@@ -95,6 +95,7 @@ File deploy yang dipakai:
 Bot hanya membuat order dari private chat supaya QRIS dan invite link tidak tercampur di group publik. Link VIP yang dikirim dibuat lewat Telethon dengan `expire_date` dan `usage_limit=1`.
 
 Jika Saweria mengembalikan HTTP 403 saat membuat QRIS, order akan ditandai gagal dan link VIP tidak akan pernah dikirim. Ini sengaja supaya tidak ada bypass pembayaran ketika gateway sedang menolak request server.
+Admin alert akan menyertakan ringkasan aman dari response Saweria, seperti content-type, server, cf-ray, dan potongan body error jika tersedia.
 
 Akun Telethon harus menjadi admin di group VIP dan punya izin membuat invite link. `VIP_GROUP_ID` bisa didapat dari bot info/chat id helper atau dari log update bot.
 
