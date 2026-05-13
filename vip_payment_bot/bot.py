@@ -27,7 +27,11 @@ class VipPaymentBot:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self.store = Store(settings.db_path)
-        self.payments = SaweriaPayments(settings.saweria_username, settings.payment_email)
+        self.payments = SaweriaPayments(
+            settings.saweria_username,
+            settings.payment_email,
+            settings.saweria_user_id,
+        )
         self.telegram_user = TelegramUserClient(settings)
         self.poller_task: asyncio.Task[None] | None = None
 

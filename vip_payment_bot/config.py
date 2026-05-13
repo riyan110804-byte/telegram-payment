@@ -79,6 +79,7 @@ class Settings:
     telethon_session_string: str
     vip_group_id: int | str
     saweria_username: str
+    saweria_user_id: str | None
     payment_amount: int
     payment_email: str
     payment_expire_minutes: int
@@ -105,6 +106,7 @@ def load_settings() -> Settings:
         telethon_session_string=_required("TELETHON_SESSION_STRING"),
         vip_group_id=vip_group_id,
         saweria_username=_saweria_username(),
+        saweria_user_id=os.getenv("SAWERIA_USER_ID", "").strip() or None,
         payment_amount=_bounded_int("PAYMENT_AMOUNT", minimum=1000),
         payment_email=os.getenv("PAYMENT_EMAIL", "member@example.com").strip(),
         payment_expire_minutes=_bounded_int(

@@ -55,6 +55,7 @@ Wajib:
 Direkomendasikan:
 
 - `PAYMENT_EMAIL`: email donor untuk Saweria.
+- `SAWERIA_USER_ID`: optional. Isi user id internal Saweria untuk bypass scrape halaman `saweria.co` jika hosting mendapat HTTP 403 dari Saweria.
 - `PAYMENT_EXPIRE_MINUTES`: default `30`.
 - `PAYMENT_CHECK_INTERVAL_SECONDS`: default `20`, minimal `5`.
 - `VIP_INVITE_EXPIRE_HOURS`: default `6`, maksimal `24`. Nilai ini ditampilkan di pesan link VIP.
