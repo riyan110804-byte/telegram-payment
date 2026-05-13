@@ -27,25 +27,5 @@
       "tag": "v1",
       "new_sqlite_classes": ["VipPaymentBotContainer"]
     }
-  ],
-  "secrets": {
-    "required": [
-      "BOT_TOKEN",
-      "ADMIN_IDS",
-      "TELETHON_API_ID",
-      "TELETHON_API_HASH",
-      "TELETHON_SESSION_STRING",
-      "VIP_GROUP_ID",
-      "SAWERIA_USERNAME",
-      "PAYMENT_AMOUNT",
-      "PAYMENT_EMAIL",
-      "PAYMENT_EXPIRE_MINUTES",
-      "PAYMENT_CHECK_INTERVAL_SECONDS",
-      "VIP_INVITE_EXPIRE_HOURS",
-      "VIP_INVITE_USAGE_LIMIT",
-      "DB_PATH",
-      "LOG_LEVEL",
-      "CLOUDFLARE_BOOT_TOKEN"
-    ]
-  }
+  ]
 }
