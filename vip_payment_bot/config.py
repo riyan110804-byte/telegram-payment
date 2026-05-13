@@ -40,6 +40,13 @@ def _bounded_int(
     return value
 
 
+def _bool(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None or value.strip() == "":
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
 def _admin_ids() -> set[int]:
     raw = _required("ADMIN_IDS")
     ids: set[int] = set()
@@ -81,6 +88,7 @@ class Settings:
     saweria_username: str
     saweria_user_id: str | None
     saweria_proxy_url: str | None
+    saweria_use_cloudscraper: bool
     payment_amount: int
     payment_email: str
     payment_expire_minutes: int
@@ -109,6 +117,7 @@ def load_settings() -> Settings:
         saweria_username=_saweria_username(),
         saweria_user_id=os.getenv("SAWERIA_USER_ID", "").strip() or None,
         saweria_proxy_url=os.getenv("SAWERIA_PROXY_URL", "").strip() or None,
+        saweria_use_cloudscraper=_bool("SAWERIA_USE_CLOUDSCRAPER"),
         payment_amount=_bounded_int("PAYMENT_AMOUNT", minimum=1000),
         payment_email=os.getenv("PAYMENT_EMAIL", "member@example.com").strip(),
         payment_expire_minutes=_bounded_int(

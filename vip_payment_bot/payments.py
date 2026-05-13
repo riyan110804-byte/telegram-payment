@@ -38,11 +38,14 @@ class SaweriaPayments:
         email: str,
         user_id: str | None = None,
         proxy_url: str | None = None,
+        use_cloudscraper: bool = False,
     ) -> None:
         self.username = username
         self.email = email
         self.user_id = user_id
         self.proxy_url = proxy_url
+        self.use_cloudscraper = use_cloudscraper
+        self._session: Any | None = None
 
     async def create_payment(self, amount: int, message: str) -> PaymentRequest:
         return await asyncio.to_thread(self._create_payment_sync, amount, message)
@@ -53,6 +56,9 @@ class SaweriaPayments:
     def _create_payment_sync(self, amount: int, message: str) -> PaymentRequest:
         if self.user_id:
             return self._create_payment_with_user_id(amount, message)
+        if self.use_cloudscraper:
+            user_id = self._validate_saweria_profile()
+            return self._create_payment_with_user_id(amount, message, user_id)
 
         from qris_saweria import create_payment_qr
 
@@ -93,9 +99,17 @@ class SaweriaPayments:
 
         return bool(check_paid_status(transaction_id))
 
-    def _create_payment_with_user_id(self, amount: int, message: str) -> PaymentRequest:
-        import requests
+    def _create_payment_with_user_id(
+        self,
+        amount: int,
+        message: str,
+        user_id: str | None = None,
+    ) -> PaymentRequest:
         from qris_saweria import generate_qr_image
+
+        target_user_id = user_id or self.user_id
+        if not target_user_id:
+            raise RuntimeError("SAWERIA_USER_ID tidak tersedia untuk membuat pembayaran.")
 
         safe_message = "".join(
             character if character.isalnum() else "-"
@@ -117,11 +131,11 @@ class SaweriaPayments:
                 "phone": "",
             },
         }
-        response = requests.post(
-            f"https://backend.saweria.co/donations/{self.user_id}",
+        response = self._request(
+            "POST",
+            f"https://backend.saweria.co/donations/{target_user_id}",
             json=payload,
             headers=self._saweria_headers(),
-            proxies=self._proxies(),
             timeout=30,
         )
         if not response.ok:
@@ -153,12 +167,10 @@ class SaweriaPayments:
         )
 
     def _check_paid_status(self, transaction_id: str) -> bool:
-        import requests
-
-        response = requests.get(
+        response = self._request(
+            "GET",
             f"https://backend.saweria.co/donations/qris/{transaction_id}",
             headers=self._saweria_headers(),
-            proxies=self._proxies(),
             timeout=30,
         )
         if not response.ok:
@@ -173,16 +185,14 @@ class SaweriaPayments:
         data = response.json().get("data", {})
         return data.get("qr_string") == ""
 
-    def _validate_saweria_profile(self) -> None:
+    def _validate_saweria_profile(self) -> str:
         import json
         import re
-        import requests
-
         url = f"https://saweria.co/{self.username}"
-        response = requests.get(
+        response = self._request(
+            "GET",
             url,
             headers=self._saweria_headers(),
-            proxies=self._proxies(),
             timeout=30,
         )
         if not response.ok:
@@ -212,10 +222,12 @@ class SaweriaPayments:
 
         data = json.loads(match.group(1))
         profile = data.get("props", {}).get("pageProps", {}).get("data", {})
-        if not profile.get("id"):
+        user_id = profile.get("id")
+        if not user_id:
             raise RuntimeError(
                 f"Saweria profile '{self.username}' terbuka, tapi user id tidak ditemukan."
             )
+        return str(user_id)
 
     def _saweria_headers(self) -> dict[str, str]:
         return {
@@ -234,6 +246,35 @@ class SaweriaPayments:
         if not self.proxy_url:
             return None
         return {"http": self.proxy_url, "https": self.proxy_url}
+
+    def _request(self, method: str, url: str, **kwargs: Any) -> Any:
+        kwargs.setdefault("proxies", self._proxies())
+        session = self._requests_session()
+        return session.request(method, url, **kwargs)
+
+    def _requests_session(self) -> Any:
+        if self._session is not None:
+            return self._session
+        if self.use_cloudscraper:
+            try:
+                import cloudscraper
+            except ImportError as exc:
+                raise RuntimeError(
+                    "SAWERIA_USE_CLOUDSCRAPER=true tapi package cloudscraper belum terinstall."
+                ) from exc
+            self._session = cloudscraper.create_scraper(
+                browser={
+                    "browser": "chrome",
+                    "platform": "windows",
+                    "desktop": True,
+                }
+            )
+            return self._session
+
+        import requests
+
+        self._session = requests.Session()
+        return self._session
 
     def _response_debug(self, response: Any) -> str:
         content_type = response.headers.get("content-type", "-")

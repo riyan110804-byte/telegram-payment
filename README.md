@@ -57,6 +57,7 @@ Direkomendasikan:
 - `PAYMENT_EMAIL`: email donor untuk Saweria.
 - `SAWERIA_USER_ID`: optional. Isi user id internal Saweria untuk bypass scrape halaman `saweria.co` jika hosting mendapat HTTP 403 dari Saweria.
 - `SAWERIA_PROXY_URL`: optional. Proxy HTTP/HTTPS untuk request Saweria jika IP hosting mendapat HTTP 403.
+- `SAWERIA_USE_CLOUDSCRAPER`: optional. Set `true` untuk mencoba `cloudscraper` saat request Saweria kena Cloudflare challenge.
 - `PAYMENT_EXPIRE_MINUTES`: default `30`.
 - `PAYMENT_CHECK_INTERVAL_SECONDS`: default `20`, minimal `5`.
 - `VIP_INVITE_EXPIRE_HOURS`: default `6`, maksimal `24`. Nilai ini ditampilkan di pesan link VIP.
@@ -96,6 +97,7 @@ Bot hanya membuat order dari private chat supaya QRIS dan invite link tidak terc
 
 Jika Saweria mengembalikan HTTP 403 saat membuat QRIS, order akan ditandai gagal dan link VIP tidak akan pernah dikirim. Ini sengaja supaya tidak ada bypass pembayaran ketika gateway sedang menolak request server.
 Admin alert akan menyertakan ringkasan aman dari response Saweria, seperti content-type, server, cf-ray, dan potongan body error jika tersedia.
+Jika body berisi `Just a moment... Enable JavaScript and cookies to continue`, set `SAWERIA_USE_CLOUDSCRAPER=true` bisa dicoba. Kalau tetap 403, IP hosting/proxy masih ditolak Cloudflare dan perlu `SAWERIA_PROXY_URL` atau hosting/IP lain.
 
 Akun Telethon harus menjadi admin di group VIP dan punya izin membuat invite link. `VIP_GROUP_ID` bisa didapat dari bot info/chat id helper atau dari log update bot.
 
