@@ -16,7 +16,7 @@ from telegram.ext import (
 )
 
 from .config import Settings, load_settings
-from .payments import SaweriaPayments
+from .payments import PaymentGatewayError, SaweriaPayments
 from .storage import Order, Store
 from .telegram_user import TelegramUserClient
 
@@ -110,6 +110,17 @@ class VipPaymentBot:
                 self.settings.payment_amount,
                 f"VIP Telegram order #{order.id} user {user.id}",
             )
+        except PaymentGatewayError as exc:
+            logger.warning("Payment gateway failed for order %s: %s", order.id, exc)
+            self.store.mark_failed(order.id, exc.admin_message)
+            await message.reply_text(
+                f"{exc.user_message}\n\nOrder: #{order.id}"
+            )
+            await self._notify_admins(
+                context.application,
+                f"Order #{order.id} gagal dibuat: {exc.admin_message}",
+            )
+            return
         except Exception as exc:
             logger.exception("Failed to create payment for order %s", order.id)
             self.store.mark_failed(order.id, str(exc))

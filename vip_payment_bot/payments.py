@@ -17,6 +17,19 @@ class PaymentRequest:
     raw: Any
 
 
+class PaymentGatewayError(RuntimeError):
+    def __init__(
+        self,
+        user_message: str,
+        admin_message: str,
+        status_code: int | None = None,
+    ) -> None:
+        super().__init__(admin_message)
+        self.user_message = user_message
+        self.admin_message = admin_message
+        self.status_code = status_code
+
+
 class SaweriaPayments:
     def __init__(
         self,
@@ -111,10 +124,17 @@ class SaweriaPayments:
             timeout=30,
         )
         if not response.ok:
-            raise RuntimeError(
-                f"Gagal membuat pembayaran Saweria: HTTP {response.status_code}. "
-                "Jika berjalan di Railway, kemungkinan IP hosting diblok Saweria. "
-                "Set SAWERIA_PROXY_URL atau gunakan hosting lain."
+            raise PaymentGatewayError(
+                user_message=(
+                    "QRIS gagal dibuat karena gateway pembayaran sedang menolak "
+                    "request server. Order dibatalkan, jangan transfer dulu."
+                ),
+                admin_message=(
+                    f"Saweria create payment gagal: HTTP {response.status_code}. "
+                    "Kemungkinan IP hosting diblok Saweria. Set SAWERIA_PROXY_URL "
+                    "atau gunakan hosting/IP lain."
+                ),
+                status_code=response.status_code,
             )
         data = response.json().get("data", {})
         qr_string = data.get("qr_string")
@@ -139,8 +159,10 @@ class SaweriaPayments:
             timeout=30,
         )
         if not response.ok:
-            raise RuntimeError(
-                f"Gagal cek status Saweria: HTTP {response.status_code}."
+            raise PaymentGatewayError(
+                user_message="Status pembayaran belum bisa dicek dari Saweria.",
+                admin_message=f"Saweria check payment gagal: HTTP {response.status_code}.",
+                status_code=response.status_code,
             )
         data = response.json().get("data", {})
         return data.get("qr_string") == ""
@@ -158,8 +180,16 @@ class SaweriaPayments:
             timeout=30,
         )
         if not response.ok:
-            raise RuntimeError(
-                f"Saweria profile '{self.username}' gagal dibuka: HTTP {response.status_code}."
+            raise PaymentGatewayError(
+                user_message=(
+                    "QRIS gagal dibuat karena gateway pembayaran sedang menolak "
+                    "request server. Order dibatalkan, jangan transfer dulu."
+                ),
+                admin_message=(
+                    f"Saweria profile '{self.username}' gagal dibuka: "
+                    f"HTTP {response.status_code}."
+                ),
+                status_code=response.status_code,
             )
 
         match = re.search(
