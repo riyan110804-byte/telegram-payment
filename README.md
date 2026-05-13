@@ -48,7 +48,7 @@ Wajib:
 - `TELETHON_API_ID`: API ID dari my.telegram.org.
 - `TELETHON_API_HASH`: API hash dari my.telegram.org.
 - `TELETHON_SESSION_STRING`: hasil script `scripts/create_telethon_session.py`.
-- `VIP_GROUP_ID`: id group VIP, contoh `-1001234567890`.
+- `VIP_GROUP_ID`: id group VIP lengkap, contoh `-1001234567890`. Jika group punya username, bisa pakai username atau link `https://t.me/...`.
 - `SAWERIA_USERNAME`: username Saweria penerima pembayaran, isi username saja tanpa `@` dan tanpa URL.
 - `PAYMENT_AMOUNT`: nominal VIP, contoh `50000`, minimal `1000`.
 
@@ -93,5 +93,7 @@ File deploy yang dipakai:
 Bot hanya membuat order dari private chat supaya QRIS dan invite link tidak tercampur di group publik. Link VIP yang dikirim dibuat lewat Telethon dengan `expire_date` dan `usage_limit=1`.
 
 Akun Telethon harus menjadi admin di group VIP dan punya izin membuat invite link. `VIP_GROUP_ID` bisa didapat dari bot info/chat id helper atau dari log update bot.
+
+Jika muncul error Telethon `Could not find the input entity`, akun Telethon belum pernah melihat group itu atau `VIP_GROUP_ID` salah. Pastikan akun Telethon sudah join group VIP, sudah admin, lalu pakai id lengkap `-100...` atau username/link group.
 
 Jangan kirim log yang berisi URL `api.telegram.org/bot...` ke publik karena itu memuat `BOT_TOKEN`. Jika token pernah terlihat di log publik/chat, rotate token lewat BotFather.
